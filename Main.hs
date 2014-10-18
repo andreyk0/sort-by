@@ -78,7 +78,7 @@ data SemVer =
          } deriving (Eq, Show, Ord)
 
 semVerZero :: SemVer
-semVerZero = SemVer 0 0 0 0
+semVerZero = SemVer (-1) (-1) (-1) (-1)
 
 runSortBySemVer :: GlobalOptions -> IO ()
 runSortBySemVer opts = do
@@ -96,8 +96,8 @@ parseSemVerLine l = ( (maybe semVerZero (id) maybeSemVer), l )
             of Just ((_ : vMajor : vMinor : _ : vMicro : vBuild: _):_) -> 
                  SemVer <$> (maybeReadInt vMajor)
                         <*> (maybeReadInt vMinor)
-                        <*> (maybe (Just 0) (Just) (maybeReadInt vMicro))
-                        <*> (maybe (Just 0) (Just) (maybeReadInt vBuild))
+                        <*> (maybe (Just (-1)) (Just) (maybeReadInt vMicro))
+                        <*> (maybe (Just (-1)) (Just) (maybeReadInt vBuild))
 
                Just x -> trace ("ERROR: " ++ (show x)) $ Nothing
 
