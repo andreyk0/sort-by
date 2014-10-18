@@ -11,6 +11,8 @@ import           Options.Applicative
 import           Text.Regex.TDFA
 import           Text.Regex.TDFA.ByteString
 
+import Debug.Trace
+
 
 data GlobalOptions =
   GlobalOptions { optReverse :: Bool
@@ -72,10 +74,11 @@ data SemVer =
   SemVer { vMajor :: !Int
          , vMinor :: !Int
          , vMicro :: !Int
+         , vBuild :: !Int
          } deriving (Eq, Show, Ord)
 
 semVerZero :: SemVer
-semVerZero = SemVer 0 0 0
+semVerZero = SemVer 0 0 0 0
 
 runSortBySemVer :: GlobalOptions -> IO ()
 runSortBySemVer opts = do
@@ -89,11 +92,14 @@ runSortBySemVer opts = do
 parseSemVerLine :: LB.ByteString -> (SemVer, LB.ByteString)
 parseSemVerLine l = ( (maybe semVerZero (id) maybeSemVer), l )
   where maybeSemVer =
-          case (l =~~ "([0-9]+)\\.([0-9]+)(\\.([0-9]+))?" :: Maybe [[LB.ByteString]])
-            of Just [ _ : vMajor : vMinor : _ : vMicro : [] ] -> 
+          case ( l =~~ "([0-9]+)\\.([0-9]+)(\\.([0-9]+))?(\\.([0-9]+))?" :: Maybe [[LB.ByteString]])
+            of Just ((_ : vMajor : vMinor : _ : vMicro : vBuild: _):_) -> 
                  SemVer <$> (maybeReadInt vMajor)
                         <*> (maybeReadInt vMinor)
                         <*> (maybe (Just 0) (Just) (maybeReadInt vMicro))
+                        <*> (maybe (Just 0) (Just) (maybeReadInt vBuild))
+
+               Just x -> trace ("ERROR: " ++ (show x)) $ Nothing
 
                Nothing -> Nothing
 
