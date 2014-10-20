@@ -83,14 +83,19 @@ semVerZero = SemVer (-1) (-1) (-1) (-1)
 runSortBySemVer :: GlobalOptions -> IO ()
 runSortBySemVer opts = do
   txt <- LB.getContents
+
   let lines = U8.lines txt
-  let semverToLine = map (parseSemVerLine) lines
-  let sortedLines = sortBy (comparing fst) semverToLine
+      semverToLine = map (parseSemVerLine) lines
+      comp = if (optReverse opts)
+             then (flip (comparing fst))
+             else (comparing fst)
+      sortedLines = sortBy (comp) semverToLine
+
   forM_ (map (LB.toStrict . snd) sortedLines) (C.putStrLn)
 
 
 parseSemVerLine :: LB.ByteString -> (SemVer, LB.ByteString)
-parseSemVerLine l = ( (maybe semVerZero (id) maybeSemVer), l )
+parseSemVerLine l = ( maybe semVerZero (id)  maybeSemVer, l )
   where maybeSemVer =
           case ( l =~~ "([0-9]+)\\.([0-9]+)(\\.([0-9]+))?(\\.([0-9]+))?" :: Maybe [[LB.ByteString]])
             of Just ((_ : vMajor : vMinor : _ : vMicro : vBuild: _):_) -> 
