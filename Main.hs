@@ -6,12 +6,15 @@ import qualified Data.ByteString.Char8 as C
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.ByteString.Lazy.UTF8 as U8
 import           Data.List
+import           Data.Maybe
 import           Data.Ord
+import           Data.Time.Format
+import           Data.Time.LocalTime
 import           Options.Applicative
+import           System.Locale
 import           Text.Regex.TDFA
-import           Text.Regex.TDFA.ByteString
 
-import Debug.Trace
+import           Debug.Trace
 
 
 data GlobalOptions =
@@ -20,13 +23,14 @@ data GlobalOptions =
                 } deriving (Show)
 
 data SortByDateOptions =
-  SortByDateOptions { dateFormat :: String
+  SortByDateOptions { listExampleDateFormats :: Bool
+                    , dateFormat :: String
                     } deriving (Show)
 
 data Command = SortBySemVer
              | SortByDate SortByDateOptions
              deriving (Show)
-  
+
 
 parseGlobalOptions :: Parser GlobalOptions
 parseGlobalOptions = subparser $ cmdSemVer <> cmdDate
@@ -38,19 +42,23 @@ parseGlobalOptions = subparser $ cmdSemVer <> cmdDate
                      info dateOptions $
                      progDesc "Sort lines by date (e.g. logs)."
 
-        globalOptions = GlobalOptions <$> switch ( long "reverse" <> short 'r' <> help "")
+        globalOptions = GlobalOptions <$> switch ( long "reverse" <> short 'r' <> help "Reverse order.")
 
         semverOptions = globalOptions <*> (pure SortBySemVer)
 
         dateOptions   = globalOptions <*> (SortByDate <$> sortByDateOptions)
 
         sortByDateOptions = SortByDateOptions <$>
+                              switch (
+                                long "list" <>
+                                short 'l' <>
+                                help "List some example date format strings.") <*>
                               (strOption $
                                  long "date-format" <>
                                  short 'f' <>
                                  metavar "DATE_FORMAT" <>
-                                 value "haha" <>
-                                 help "Date format."
+                                 value "%a %b %e %H:%M:%S %Z %Y" <>
+                                 help "Date format, default is '%a %b %e %H:%M:%S %Z %Y'"
                               )
 
 
@@ -64,10 +72,11 @@ main = execParser opts >>= runSort
 
 
 runSort :: GlobalOptions -> IO ()
-runSort opts =
-  case (optCommand opts) of
-   SortBySemVer -> runSortBySemVer opts
-   _ -> putStrLn (show opts)
+runSort gOpts =
+  case (optCommand gOpts) of
+   SortBySemVer -> runSortBy gOpts (parseSemVerLine)
+   SortByDate (SortByDateOptions True _) -> runListExampleDateFormats
+   SortByDate dOpts@(SortByDateOptions False _) -> runSortBy gOpts (parseTimeFmt (dateFormat dOpts))
 
 
 data SemVer =
@@ -77,32 +86,20 @@ data SemVer =
          , vBuild :: !Int
          } deriving (Eq, Show, Ord)
 
+
 semVerZero :: SemVer
 semVerZero = SemVer (-1) (-1) (-1) (-1)
 
-runSortBySemVer :: GlobalOptions -> IO ()
-runSortBySemVer opts = do
-  txt <- LB.getContents
 
-  let lines = U8.lines txt
-      semverToLine = map (parseSemVerLine) lines
-      comp = if (optReverse opts)
-             then (flip (comparing fst))
-             else (comparing fst)
-      sortedLines = sortBy (comp) semverToLine
-
-  forM_ (map (LB.toStrict . snd) sortedLines) (C.putStrLn)
-
-
-parseSemVerLine :: LB.ByteString -> (SemVer, LB.ByteString)
-parseSemVerLine l = ( maybe semVerZero (id)  maybeSemVer, l )
+parseSemVerLine :: LB.ByteString -> SemVer
+parseSemVerLine l = maybe semVerZero (id)  maybeSemVer
   where maybeSemVer =
           case ( l =~~ "([0-9]+)\\.([0-9]+)(\\.([0-9]+))?(\\.([0-9]+))?" :: Maybe [[LB.ByteString]])
-            of Just ((_ : vMajor : vMinor : _ : vMicro : vBuild: _):_) -> 
-                 SemVer <$> (maybeReadInt vMajor)
-                        <*> (maybeReadInt vMinor)
-                        <*> (maybe (Just (-1)) (Just) (maybeReadInt vMicro))
-                        <*> (maybe (Just (-1)) (Just) (maybeReadInt vBuild))
+            of Just ((_ : vMajor' : vMinor' : _ : vMicro' : vBuild' : _):_) ->
+                 SemVer <$> (maybeReadInt vMajor')
+                        <*> (maybeReadInt vMinor')
+                        <*> (maybe (Just (-1)) (Just) (maybeReadInt vMicro'))
+                        <*> (maybe (Just (-1)) (Just) (maybeReadInt vBuild'))
 
                Just x -> trace ("ERROR: " ++ (show x)) $ Nothing
 
@@ -112,3 +109,34 @@ parseSemVerLine l = ( maybe semVerZero (id)  maybeSemVer, l )
         maybeReadInt s = do
           (sInt, _) <- (C.readInt . LB.toStrict) s
           return sInt
+
+
+parseTimeFmt :: String -> LB.ByteString -> LocalTime
+parseTimeFmt fmt l = fromMaybe earliestPossibleTime (findTime fmt (U8.toString l))
+  where earliestPossibleTime = readTime defaultTimeLocale "" "" :: LocalTime
+
+
+findTime :: String -> String -> Maybe LocalTime
+findTime fmt s =
+  fmap (fst . last) $ find (not . null) $ map (rTime) $ tails s
+  where rTime :: ReadS LocalTime
+        rTime = readsTime defaultTimeLocale fmt
+
+
+runSortBy :: Ord a => GlobalOptions -> (LB.ByteString -> a) -> IO ()
+runSortBy gOpts lToOrd = do
+  txt <- LB.getContents
+
+  let ordLn = map (\x -> (lToOrd x, x)) (U8.lines txt)
+      comp = if (optReverse gOpts)
+             then (flip (comparing fst))
+             else (comparing fst)
+      sortedLines = sortBy (comp) ordLn
+
+  forM_ (map (LB.toStrict . snd) sortedLines) (C.putStrLn)
+
+
+runListExampleDateFormats :: IO ()
+runListExampleDateFormats = do
+  putStrLn "'%a %b %e %H:%M:%S %Z %Y' -> 'Sun Nov  2 22:22:17 EST 2014'"
+  putStrLn "'%Y-%m-%dT%H:%M:%S%Q'     -> '2014-10-27T09:44:55+00:00'"
