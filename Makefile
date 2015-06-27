@@ -1,23 +1,10 @@
-PATH:=.cabal-sandbox/bin:$(PATH)
-export PATH
-
-default: build
-
-%:
-	cabal $@
-
-init:
-	cabal sandbox init
-
-deps:
-	cabal install --dependencies-only
+default:
+	stack build
 
 clean:
-	cabal clean
+	stack clean
 
 
 .PHONY: \
 	clean \
 	default \
-	deps \
-	init
