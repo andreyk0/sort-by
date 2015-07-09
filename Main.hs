@@ -7,6 +7,8 @@ import qualified Data.ByteString.Lazy as LB
 import qualified Data.ByteString.Lazy.UTF8 as U8
 import           Data.List
 import           Data.Maybe
+import           Data.Map(Map)
+import qualified Data.Map as M
 import           Data.Ord
 import           Data.Time.Format
 import           Data.Time.LocalTime
@@ -24,13 +26,21 @@ data GlobalOptions =
 
 data SortByDateOptions =
   SortByDateOptions { listExampleDateFormats :: Bool
-                    , dateFormat :: String
+                    , dateFormat :: [String]
                     } deriving (Show)
 
 data Command = SortBySemVer
              | SortByDate SortByDateOptions
              deriving (Show)
 
+
+-- | Key is the format, value is an example
+defaultDateFormats:: Map String String
+defaultDateFormats = M.fromList [
+    ("%Y-%m-%dT%H:%M:%S%Q",     "2014-10-27T09:44:55+00:00")
+  , ("%a %b %e %H:%M:%S %Z %Y", "Sun Nov  2 22:22:17 EST 2014")
+  , ("%Y-%m-%d %H:%M:%S%Q",     "2014-10-27 09:44:55+00:00")
+  ]
 
 parseGlobalOptions :: Parser GlobalOptions
 parseGlobalOptions = subparser $ cmdSemVer <> cmdDate
@@ -46,20 +56,23 @@ parseGlobalOptions = subparser $ cmdSemVer <> cmdDate
 
         semverOptions = globalOptions <*> (pure SortBySemVer)
 
-        dateOptions   = globalOptions <*> (SortByDate <$> sortByDateOptions)
+        dateOptions   = globalOptions <*> (SortByDate <$> (addDefaultDateFormats <$> sortByDateOptions))
 
         sortByDateOptions = SortByDateOptions <$>
                               switch (
                                 long "list" <>
                                 short 'l' <>
                                 help "List some example date format strings.") <*>
-                              (strOption $
-                                 long "date-format" <>
-                                 short 'f' <>
-                                 metavar "DATE_FORMAT" <>
-                                 value "%a %b %e %H:%M:%S %Z %Y" <>
-                                 help "Date format, default is '%a %b %e %H:%M:%S %Z %Y'"
-                              )
+                              ((many . strOption) $
+                                long "date-format" <>
+                                short 'f' <>
+                                metavar "DATE_FORMAT" <>
+                                help "Date format, default is to try built-in list, see -l")
+
+        addDefaultDateFormats sbdo = sbdo { dateFormat = case (dateFormat sbdo)
+                                                           of [] -> M.keys defaultDateFormats
+                                                              x  -> x
+                                          }
 
 
 main :: IO ()
@@ -72,7 +85,8 @@ main = execParser opts >>= runSort
 
 
 runSort :: GlobalOptions -> IO ()
-runSort gOpts =
+runSort gOpts = do
+  putStrLn $ show gOpts
   case (optCommand gOpts) of
    SortBySemVer -> runSortBy gOpts (parseSemVerLine)
    SortByDate (SortByDateOptions True _) -> runListExampleDateFormats
@@ -111,9 +125,10 @@ parseSemVerLine l = maybe semVerZero (id)  maybeSemVer
           return sInt
 
 
-parseTimeFmt :: String -> LB.ByteString -> LocalTime
-parseTimeFmt fmt l = fromMaybe earliestPossibleTime (findTime fmt (U8.toString l))
-  where earliestPossibleTime = readTime defaultTimeLocale "" "" :: LocalTime
+parseTimeFmt :: [String] -> LB.ByteString -> LocalTime
+parseTimeFmt fmts l = fromMaybe earliestPossibleTime $ listToMaybe . catMaybes $ fmap (findTimeBS) fmts
+  where findTimeBS fmt = (findTime fmt (U8.toString l))
+        earliestPossibleTime = readTime defaultTimeLocale "" "" :: LocalTime
 
 
 findTime :: String -> String -> Maybe LocalTime
@@ -138,5 +153,4 @@ runSortBy gOpts lToOrd = do
 
 runListExampleDateFormats :: IO ()
 runListExampleDateFormats = do
-  putStrLn "'%a %b %e %H:%M:%S %Z %Y' -> 'Sun Nov  2 22:22:17 EST 2014'"
-  putStrLn "'%Y-%m-%dT%H:%M:%S%Q'     -> '2014-10-27T09:44:55+00:00'"
+  mapM_ (putStrLn . show) $ M.toAscList defaultDateFormats
