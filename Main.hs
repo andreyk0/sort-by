@@ -86,7 +86,6 @@ main = execParser opts >>= runSort
 
 runSort :: GlobalOptions -> IO ()
 runSort gOpts = do
-  putStrLn $ show gOpts
   case (optCommand gOpts) of
    SortBySemVer -> runSortBy gOpts (parseSemVerLine)
    SortByDate (SortByDateOptions True _) -> runListExampleDateFormats
