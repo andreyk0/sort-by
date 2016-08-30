@@ -13,7 +13,7 @@ import           Data.Ord
 import           Data.Time.Format
 import           Data.Time.LocalTime
 import           Options.Applicative
-import           System.Locale
+--import           System.Locale
 import           Text.Regex.TDFA
 
 import           Debug.Trace
@@ -40,6 +40,10 @@ defaultDateFormats = M.fromList [
     ("%Y-%m-%dT%H:%M:%S%Q",     "2014-10-27T09:44:55+00:00")
   , ("%a %b %e %H:%M:%S %Z %Y", "Sun Nov  2 22:22:17 EST 2014")
   , ("%Y-%m-%d %H:%M:%S%Q",     "2014-10-27 09:44:55+00:00")
+  , ("%Y%m%d%H%M%S",            "20141027094455")
+  , ("%Y%m%d%H%M",              "201410270944")
+  , ("%Y%m%d%H",                "2014102709")
+  , ("%Y%m%dH",                 "20141027")
   ]
 
 parseGlobalOptions :: Parser GlobalOptions
@@ -127,14 +131,14 @@ parseSemVerLine l = maybe semVerZero (id)  maybeSemVer
 parseTimeFmt :: [String] -> LB.ByteString -> LocalTime
 parseTimeFmt fmts l = fromMaybe earliestPossibleTime $ listToMaybe . catMaybes $ fmap (findTimeBS) fmts
   where findTimeBS fmt = (findTime fmt (U8.toString l))
-        earliestPossibleTime = readTime defaultTimeLocale "" "" :: LocalTime
+        earliestPossibleTime = (parseTimeOrError True) defaultTimeLocale "" "" :: LocalTime
 
 
 findTime :: String -> String -> Maybe LocalTime
 findTime fmt s =
   fmap (fst . last) $ find (not . null) $ map (rTime) $ tails s
   where rTime :: ReadS LocalTime
-        rTime = readsTime defaultTimeLocale fmt
+        rTime = (readSTime True) defaultTimeLocale fmt
 
 
 runSortBy :: Ord a => GlobalOptions -> (LB.ByteString -> a) -> IO ()
