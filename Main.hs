@@ -7,13 +7,10 @@ import qualified Data.ByteString.Lazy as LB
 import qualified Data.ByteString.Lazy.UTF8 as U8
 import           Data.List
 import           Data.Maybe
-import           Data.Map(Map)
-import qualified Data.Map as M
 import           Data.Ord
 import           Data.Time.Format
 import           Data.Time.LocalTime
 import           Options.Applicative
---import           System.Locale
 import           Text.Regex.TDFA
 
 import           Debug.Trace
@@ -35,8 +32,8 @@ data Command = SortBySemVer
 
 
 -- | Key is the format, value is an example
-defaultDateFormats:: Map String String
-defaultDateFormats = M.fromList [
+defaultDateFormats:: [(String,String)]
+defaultDateFormats = [
     ("%Y-%m-%dT%H:%M:%S%Q",     "2014-10-27T09:44:55+00:00")
   , ("%a %b %e %H:%M:%S %Z %Y", "Sun Nov  2 22:22:17 EST 2014")
   , ("%Y-%m-%d %H:%M:%S%Q",     "2014-10-27 09:44:55+00:00")
@@ -49,11 +46,11 @@ defaultDateFormats = M.fromList [
 parseGlobalOptions :: Parser GlobalOptions
 parseGlobalOptions = subparser $ cmdSemVer <> cmdDate
   where cmdSemVer  = command "semver" $
-                     info semverOptions $
+                     info (semverOptions <**> helper) $
                      progDesc "Sort lines by 'semver' (e.g. 0.1.2)."
 
         cmdDate    = command "date" $
-                     info dateOptions $
+                     info (dateOptions <**> helper) $
                      progDesc "Sort lines by date (e.g. logs)."
 
         globalOptions = GlobalOptions <$> switch ( long "reverse" <> short 'r' <> help "Reverse order.")
@@ -74,7 +71,7 @@ parseGlobalOptions = subparser $ cmdSemVer <> cmdDate
                                 help "Date format, default is to try built-in list, see -l")
 
         addDefaultDateFormats sbdo = sbdo { dateFormat = case (dateFormat sbdo)
-                                                           of [] -> M.keys defaultDateFormats
+                                                           of [] -> fmap (fst) defaultDateFormats
                                                               x  -> x
                                           }
 
@@ -156,4 +153,4 @@ runSortBy gOpts lToOrd = do
 
 runListExampleDateFormats :: IO ()
 runListExampleDateFormats = do
-  mapM_ (putStrLn . show) $ M.toAscList defaultDateFormats
+  mapM_ (putStrLn . show) $ defaultDateFormats
